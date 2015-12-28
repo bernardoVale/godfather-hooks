@@ -30,6 +30,7 @@ def run_paramiko_command(client, command, work_dir=None):
     error_lines = stderr.readlines()
     if error_lines:
         print error_lines
+        return None
     else:
         return stdout.read()
 
@@ -54,8 +55,8 @@ def parse_modified_servers(diff_output):
     modfied_servers = []
     for line in diff_output.split('\n'):
         got_list = line.strip().split('/')
-        if len(got_list) >= 2:
-            modfied_servers.append(got_list[0])
+        if len(got_list) >= 3:
+            modfied_servers.append(got_list[1])
     return modfied_servers
 
 
@@ -88,14 +89,19 @@ def main():
         modified_servers = parse_modified_servers(output)
         ansible_cmd = parse_ansible_command(modified_servers)
         if ansible_cmd:
-            print run_paramiko_command(conn, ansible_cmd)
+            reset_output = run_paramiko_command(conn, "git reset --hard origin/master", path)
+            if reset_output:
+                print run_paramiko_command(conn, ansible_cmd)
+            else:
+                print "Erro ao resetar o repositorio no controller"
+                exit(3)
         # There is modified files but not servers.
         else:
             print "Nothing to refresh"
     #There is no files with modifications
     else:
         print "Nothing to refresh"
-    print run_paramiko_command(conn, "git reset --hard origin/master", path)
+    print
 
 if __name__ == '__main__':
    main()
