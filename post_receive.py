@@ -2,31 +2,48 @@
 import sys
 import subprocess
 import json
+from paramiko import SSHClient
+import paramiko
 
-def run_command(work_dir, command):
+
+def create_connection():
     """
-    Run a command on OS
-    :param work_dir: working directory
-    :param command: command itself
-    :return: str: output of the command
+    Starts a connection to the controller host
+    :return:
     """
-    session = subprocess.Popen(command.split(' '), stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=work_dir)
-    stdout, stderr = session.communicate()
-    if stderr != '':
-        print 'Impossivel executar o comando %s\n Erro: %s' % (command, stderr)
-        return None
+    host = "10.200.0.127"
+    user = "root"
+    pwd = "oracle"
+    client = SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(hostname=host, username=user, password=pwd, look_for_keys=False, allow_agent=False)
+    except:
+        print "Impossivel conectar com o controller"
+        exit(3)
+    return client
+
+def run_paramiko_command(client, command, work_dir=None):
+    if work_dir:
+        command = "cd %s;%s" % (work_dir, command)
+    stdin, stdout, stderr = client.exec_command(command)
+    error_lines = stderr.readlines()
+    if error_lines:
+        print error_lines
     else:
-        return stdout
+        return stdout.read()
 
-def git_diff_output(repo_path):
+
+def git_diff_output(repo_path, conn):
     """
     Return the output of git diff after a fetch
     :param: repo_path: str: Path to the repository
     :return: str
     """
     command = "/usr/bin/git diff --name-only origin/master"
-    return run_command(repo_path, command)
+    #return run_command(repo_path, command)
+    return run_paramiko_command(conn, command, repo_path)
+
 
 def parse_modified_servers(diff_output):
     """
@@ -41,16 +58,6 @@ def parse_modified_servers(diff_output):
             modfied_servers.append(got_list[0])
     return modfied_servers
 
-def create_inventory(modfied_servers):
-    dict = {
-        "group": {
-            "hosts" : modfied_servers
-        },
-        "vars": {
-            "ansible_ssh_user": "root",
-        }
-    }
-    return dict
 
 def parse_ansible_command(modified_hosts):
     """
@@ -60,7 +67,7 @@ def parse_ansible_command(modified_hosts):
     """
     #Ansible
     if modified_hosts:
-        start_cmd = "ansible-playbook modified-hosts.yml -l nrpe"
+        start_cmd = "ansible-playbook /etc/ansible/roles/remote-config/modified-hosts.yml -l nrpe"
         extra_vars = "--extra-vars '{\"modified_hosts\":["
         for host in modified_hosts:
             extra_vars += "\"%s\"," % host
@@ -70,25 +77,25 @@ def parse_ansible_command(modified_hosts):
     else:
         return None
 
-def main(args):
-    path = args[0]
-    run_command(path, "git fetch --all")
-    output = git_diff_output(path)
+
+def main():
+    path = "/remote-configs"
+    conn = create_connection()
+    run_paramiko_command(conn, "git fetch --all", path)
+    #run_command(path, "git fetch --all")
+    output = git_diff_output(path, conn)
     if output:
         modified_servers = parse_modified_servers(output)
-        print modified_servers
         ansible_cmd = parse_ansible_command(modified_servers)
-        print ansible_cmd
         if ansible_cmd:
-            get = run_command('/etc/ansible/roles/remote-config/', ansible_cmd)
-            print get
+            print run_paramiko_command(conn, ansible_cmd)
         # There is modified files but not servers.
         else:
             print "Nothing to refresh"
     #There is no files with modifications
     else:
         print "Nothing to refresh"
-    run_command(path, "git reset --hard origin/master")
+    print run_paramiko_command(conn, "git reset --hard origin/master", path)
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+   main()

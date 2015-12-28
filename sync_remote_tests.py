@@ -5,6 +5,7 @@ import mock
 from mock import PropertyMock
 from sync_remote import git_diff_output
 from sync_remote import parse_modified_servers
+from sync_remote import *
 
 class TestSyncRemote(unittest.TestCase):
     """
@@ -56,3 +57,15 @@ class TestSyncRemote(unittest.TestCase):
         expected = ['host1', 'host2', 'host4']
         output = parse_modified_servers(test_output_success)
         self.assertEqual(expected, output)
+
+    def test_run_ansible_playbook(self):
+        modified_servers = ['capa', 'capudo']
+        expected = "/usr/bin/ansible-playbook /etc/ansible/roles/remote-config/modified-hosts.yml -l nrpe --extra-vars '{\"modified_hosts\":[\"capa\",\"capudo\"]}'"
+        got = parse_ansible_command(modified_servers)
+        self.assertEqual(expected, got)
+
+    def test_run_ansible_playbook_without_modified_servers(self):
+        modified_servers = []
+        expected = None
+        got = parse_ansible_command(modified_servers)
+        self.assertEqual(expected, got)
