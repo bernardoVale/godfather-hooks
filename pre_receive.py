@@ -1,4 +1,4 @@
-# !/usr/bin/env python
+#!/usr/bin/env python
 import subprocess
 import sys
 from paramiko import SSHClient
@@ -132,13 +132,27 @@ def get_retry_filename(commits_list):
     return last_commit_sha1[0:7] + '.tmp'
 
 
+def remove_retry_file(conn, file_name):
+    """
+    Remove the retry file
+    :param conn: SSHClient: Paramiko connection
+    :param file_name: str: File name of the retry file
+    :return: None
+    """
+    command = "rm -rf /tmp/%s" % file_name
+    print "Running %s" % command
+    stderr, stdout = run_paramiko_command(conn, command)
+    if stderr:
+        print "Nao foi possivel remover o arquivo de retry: /tmp/%s" % file_name
+        print stderr
+
 def write_retry_file(conn, modified_servers, file_name):
     """
     Write a retry file inside the controller host
     :param conn: Paramiko connection
     :param modified_servers: []: List of all modified servers
     :param file_name: str: Name of the retry file
-    :return:
+    :return: None
     """
     modified_into_string = "\n".join(modified_servers)
     command = "echo -e \"%s\" > /tmp/%s" % (modified_into_string, file_name)
@@ -159,16 +173,21 @@ def execute_test_playbook(conn, file_name):
     """
     cmd = "ansible-playbook /etc/ansible/roles/remote-config/remote-config.yml --check -l @/tmp/%s" % file_name
     stderr, stdout = run_paramiko_command(conn, cmd)
+    exit_status = 0
     if stderr:
         print "Ocorreu algum problema ao tentar executar o playbook de teste de conectividade, leia o output:\n"
         print stderr
-        exit(2)
+        exit_status = 2
     if 'unreachable=1' in stdout:
         print "Alguns hosts falharam no teste.\nEste push sera negado. Verifique os erros no output. \nPode ser erro" \
               " de conectividade com o controller ou algo que esta errado nas configuracoes do remote-config.\n" \
               "Veja o output abaixo:"
         print stdout
-        exit(2)
+        exit_status = 2
+    if exit_status == 2:
+        # I'll try to remove, but, if I couldn't there's no problem
+        remove_retry_file(conn, file_name)
+    return exit_status
 
 
 # modified_servers = ['artemis', 'nova-nfe', 'other-server']
@@ -187,7 +206,8 @@ def main(args):
     file_name = get_retry_filename(commit_list)
     conn = create_connection()
     write_retry_file(conn, modified_servers, file_name)
-    execute_test_playbook(conn, file_name)
+    exit_status = execute_test_playbook(conn, file_name)
+    exit(exit_status)
 
 
 if __name__ == '__main__':
