@@ -4,19 +4,24 @@ import os
 import shutil
 import unittest
 import mock
+from mock import patch, Mock
 from mock import PropertyMock
+import paramiko
+from paramiko import SSHClient
 
 class TestPreReceive(unittest.TestCase):
     """
     Tests related to modified servers
     """
 
+    @patch('paramiko.SSHClient.connect', Mock)
     def setUp(self):
         self.test_output_success = " host1/file1 \n \
              host2/file1 \n \
              host3/file1 \n \
              host4/file1"
         self.output_none = ""
+        self.fake_conn = mock
         pass
 
     def tearDown(self):
@@ -57,10 +62,10 @@ class TestPreReceive(unittest.TestCase):
             self.assertEqual(got, expected)
 
     def test_get_modified_servers_from_commit(self):
-        mocked_result = "capa/server1"
+        mocked_result = "capa/capudo/server1"
         with mock.patch('pre_receive.run_command', return_value=mocked_result) as m:
             got = get_modified_servers_from_commit('1ffaaf3187a85176e984025690e428ab2f5a2296')
-            expected = ['capa']
+            expected = ['capudo']
             self.assertEqual(got, expected)
 
     def test_get_modified_servers_from_commit_that_arent_a_server(self):
@@ -95,3 +100,35 @@ class TestPreReceive(unittest.TestCase):
             got = get_all_modified_servers(list_of_commits)
             expected = ["server1", "server2"]
             self.assertEqual(got, expected)
+
+
+    def test_write_retry_file(self):
+        modified_servers = ['server1', 'server2']
+        mocked_result = ('','')
+        with mock.patch('pre_receive.run_paramiko_command', return_value=mocked_result) as m:
+            try:
+                write_retry_file(self.fake_conn, modified_servers, 'dontfuckingcare')
+            except SystemExit:
+                self.assertTrue(False)
+            except:
+                self.assertTrue(True)
+
+    def test_write_retry_file_with_failure(self):
+        modified_servers = ['server1', 'server2']
+        mocked_result = ('this is an error message','')
+        with mock.patch('pre_receive.run_paramiko_command', return_value=mocked_result) as m:
+            with self.assertRaises(SystemExit) as cm:
+                write_retry_file(self.fake_conn, modified_servers, 'dontcare')
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_get_retry_filename(self):
+        commits_list = ['1ffaaf3187a85176e984025690e428ab2f5a2296', '536b9d6404b456cd5c9bba63cd2648d1d9053340']
+        expect = '536b9d6.tmp'
+        got = get_retry_filename(commits_list)
+        self.assertEqual(expect, got)
+
+    def test_get_retry_filename_single_commit(self):
+        commits_list = ['1ffaaf3187a85176e984025690e428ab2f5a2296']
+        expect = '1ffaaf3.tmp'
+        got = get_retry_filename(commits_list)
+        self.assertEqual(expect, got)
