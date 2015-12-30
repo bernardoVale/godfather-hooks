@@ -203,11 +203,14 @@ def main(args):
     ref, old, new = (args)
     commit_list = rev_list_sha1(new, old)
     modified_servers = get_all_modified_servers(commit_list)
-    file_name = get_retry_filename(commit_list)
-    conn = create_connection()
-    write_retry_file(conn, modified_servers, file_name)
-    exit_status = execute_test_playbook(conn, file_name)
-    exit(exit_status)
+    if modified_servers:
+        file_name = get_retry_filename(commit_list)
+        conn = create_connection()
+        write_retry_file(conn, modified_servers, file_name)
+        exit_status = execute_test_playbook(conn, file_name)
+        exit(exit_status)
+    else:
+        print "Nothing changed, move on!"
 
 
 if __name__ == '__main__':
