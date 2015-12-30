@@ -64,8 +64,9 @@ def rev_list_sha1(new, old):
     commit_list = []
     # Only the first 6 characters are needed
     command = "git rev-list %s..%s" % (old[0:7], new[0:7])
-    output = run_command('/var/opt/gitlab/git-data/repositories/bernardo.vale/hookoso.git', command)
+    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
     # The run command method was fine!
+    print "rev_list: %s" % output
     if output:
         for commit in output.strip().split('\n'):
             # Each commit SHA1 has exacly 40 characters
@@ -98,7 +99,7 @@ def get_modified_servers_from_commit(commit_sha1):
     :return: []: List of files modified from that commit
     """
     command = "git log -1 --name-only --pretty=format:'' %s" % commit_sha1
-    output = run_command('/var/opt/gitlab/git-data/repositories/bernardo.vale/hookoso.git', command)
+    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
     modified_files = []
     if output:
         modified_files = parse_modified_servers(output)
@@ -128,7 +129,9 @@ def get_retry_filename(commits_list):
     :param commits_list: []: List of all commits SHA1
     :return:
     """
-    last_commit_sha1 = commits_list[-1]
+    print "Commit list:%s" % commits_list
+    last_commit_sha1 = commits_list[0]
+    print "Last_commit:%s" % last_commit_sha1
     return last_commit_sha1[0:7] + '.tmp'
 
 
