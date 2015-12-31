@@ -4,7 +4,36 @@ import subprocess
 import json
 from paramiko import SSHClient
 import paramiko
+import time
 
+def run_command(work_dir, command):
+    """
+    Run a command on OS
+    :param work_dir: working directory
+    :param command: command itself
+    :return: str: output of the command
+    """
+    session = subprocess.Popen(command.split(' '), stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=work_dir)
+    stdout, stderr = session.communicate()
+    if stderr != '':
+        print 'Impossivel executar o comando %s\n Erro: %s' % (command, stderr)
+        return None
+    else:
+        return stdout
+
+def run_remote_command(client, command, work_dir=None):
+    """
+    Executes a command and return stdout and stderr
+    :param client: SSHClient: a runnning ssh connection
+    :param command: str: a bash command
+    :param work_dir: str: A directory to start with
+    :return: (str, str): Both stderr and stdout
+    """
+    if work_dir:
+        command = "cd %s;%s" % (work_dir, command)
+    stdin, stdout, stderr = client.exec_command(command)
+    return stderr.read(), stdout.read()
 
 def create_connection():
     """
@@ -23,85 +52,118 @@ def create_connection():
         exit(3)
     return client
 
-def run_paramiko_command(client, command, work_dir=None):
-    if work_dir:
-        command = "cd %s;%s" % (work_dir, command)
-    stdin, stdout, stderr = client.exec_command(command)
-    error_lines = stderr.readlines()
-    if error_lines:
-        print error_lines
-        return None
+
+def get_last_commit():
+    """
+    Return the last commit sha1 inside the repo.
+    :return: str: Commit sha1
+    """
+    cmd = "git log --format=%H -n 1"
+    path = "/var/opt/gitlab/git-data/repositories/infra/remote-configs.git"
+    output = run_command(path, cmd)
+    if output:
+        return output.strip()
+
+def get_file_name():
+    """
+    Return the name of the retry file
+    :return: str: retry file and directory
+    """
+    commit_sha1 = get_last_commit()
+    if commit_sha1:
+        return "/tmp/%s.tmp" % commit_sha1[0:7]
     else:
-        return stdout.read()
+        print "Nao foi possivel coletar o SHA1 do ultimo commit, verifique os erros acima"
+        exit(2)
 
-
-def git_diff_output(repo_path, conn):
+def run_playbook(conn, retry_file):
     """
-    Return the output of git diff after a fetch
-    :param: repo_path: str: Path to the repository
-    :return: str
+    Ran the playbook remote-config with the retry_file especified
+    :param conn: SSHClient: A paramiko connection to the controller host
+    :param retry_file: str: The retry file with only the modified hosts
+    :return: None
     """
-    command = "/usr/bin/git diff --name-only origin/master"
-    #return run_command(repo_path, command)
-    return run_paramiko_command(conn, command, repo_path)
+    cmd = "ansible-playbook /etc/ansible/roles/remote-config/remote-config.yml -l @%s" % retry_file
+    stderr, stdout = run_remote_command(conn, cmd)
+    if stderr:
+        print "Aconteceu algum problema na execucao do playbook remote-config.yml\nVerifique o erro abaixo:"
+        print stderr
+        # I don't want a git reset if the playbook stop with errors
+        exit(2)
+    print stdout
 
-
-def parse_modified_servers(diff_output):
+def update_controller_repo(conn, path):
     """
-    Return a list of servers modified
-    :param diff_output: str: output of git diff
-    :return: []: List of servers
-    """
-    modfied_servers = []
-    for line in diff_output.split('\n'):
-        got_list = line.strip().split('/')
-        if len(got_list) >= 3:
-            modfied_servers.append(got_list[1])
-    return modfied_servers
-
-
-def parse_ansible_command(modified_hosts):
-    """
-    Parse the ansible command to run only on modified hosts
-    :param modified_hosts: []
+    Try to fetch git updates on the local repository (controller repo)
+    :param conn: SSHClient: A running ssh connection
+    :param path: str: Work dir of the repo
     :return:
     """
-    #Ansible
-    if modified_hosts:
-        start_cmd = "ansible-playbook /etc/ansible/roles/remote-config/modified-hosts.yml -l nrpe"
-        extra_vars = "--extra-vars '{\"modified_hosts\":["
-        for host in modified_hosts:
-            extra_vars += "\"%s\"," % host
-        # Removing the last column
-        end_cmd = " %s]}'" % extra_vars[0:-1]
-        return start_cmd + end_cmd
-    else:
-        return None
+    keep_trying = 0
+    stderr = stdout = ""
+    # Sometimes fetch fails, I don't it to give up without 3 shoots
+    while keep_trying < 3:
+        stderr, stdout = run_remote_command(conn, "git fetch --all", path)
+        if stderr:
+            keep_trying += 1
+            # If this is a connection problem, let's try again
+            time.sleep(1)
+        else:
+            keep_trying = 0
+            print stdout
+            break
+    # Failed miserable three times
+    if keep_trying == 3:
+        print "Nao foi possivel atualizar o repositorio %s\nVerifique o erro abaixo:" % path
+        print stderr
+        exit(2)
+
+
+def retry_file_exists(conn, retry_file):
+    """
+    Make sure this file exists inside the controller host.
+    The update hook does not write this file if there is no
+    servers with modifications
+    :param conn: SSHClient
+    :param retry_file: str: retry file name and path
+    :return: bool
+    """
+    cmd = "ls %s" % retry_file
+    stderr, stdout = run_remote_command(conn, cmd)
+    return True if stderr == "" else False
+
+def reset_controller_repo(conn, path):
+    """
+    Run a git reset to get all updates from the last push
+    :param conn: SSHClient: A running ssh connection
+    :param path: str: Work dir of the repo
+    :return:
+    """
+    # Reset controller repo with the just pushed files
+    stderr, stdout = run_remote_command(conn, "git reset --hard origin/master", path)
+    if stderr:
+        print "Nao foi possivel resetar o repositorio %s\nVerifique o erro abaixo:" % path
+        print stderr
+        exit(2)
+    # Print for logging
+    print stdout
 
 
 def main():
     path = "/remote-configs"
     conn = create_connection()
-    run_paramiko_command(conn, "git fetch --all", path)
-    #run_command(path, "git fetch --all")
-    output = git_diff_output(path, conn)
-    if output:
-        modified_servers = parse_modified_servers(output)
-        ansible_cmd = parse_ansible_command(modified_servers)
-        if ansible_cmd:
-            reset_output = run_paramiko_command(conn, "git reset --hard origin/master", path)
-            if reset_output:
-                print run_paramiko_command(conn, ansible_cmd)
-            else:
-                print "Erro ao resetar o repositorio no controller"
-                exit(3)
-        # There is modified files but not servers.
-        else:
-            print "Nothing to refresh"
-    #There is no files with modifications
+    # Failure it's handled on this command
+    update_controller_repo(conn, path)
+    # Reset to the latest update
+    reset_controller_repo(conn, path)
+    # Make sure there's a retry file. If it doesn't the update does not contain modified servers
+    retry_file = get_file_name()
+    # Last test. If the file exists run the playbook
+    if retry_file_exists(conn, retry_file):
+        # If we got here, everything it's ok, just run the playbook
+        run_playbook(conn, retry_file)
     else:
-        print "Nothing to refresh"
-    print
+        print "Nao existem servidores com modificacoes.\nRepositorio atualizado com sucesso!"
 
 if __name__ == '__main__':
    main()

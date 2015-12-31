@@ -28,12 +28,6 @@ def run_paramiko_command(client, command, work_dir=None):
         command = "cd %s;%s" % (work_dir, command)
     stdin, stdout, stderr = client.exec_command(command)
     return stderr.read(), stdout.read()
-    # error_lines = stderr.read()
-    # if error_lines:
-    # print error_lines
-    #     return error_lines
-    # else:
-    #     return stdout.read()
 
 
 def run_command(work_dir, command):
@@ -64,7 +58,7 @@ def rev_list_sha1(new, old):
     commit_list = []
     # Only the first 6 characters are needed
     command = "git rev-list %s..%s" % (old[0:7], new[0:7])
-    output = run_command('/var/opt/gitlab/git-data/repositories/bernardo.vale/hookoso.git', command)
+    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
     # The run command method was fine!
     if output:
         for commit in output.strip().split('\n'):
@@ -98,7 +92,7 @@ def get_modified_servers_from_commit(commit_sha1):
     :return: []: List of files modified from that commit
     """
     command = "git log -1 --name-only --pretty=format:'' %s" % commit_sha1
-    output = run_command('/var/opt/gitlab/git-data/repositories/bernardo.vale/hookoso.git', command)
+    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
     modified_files = []
     if output:
         modified_files = parse_modified_servers(output)
@@ -128,7 +122,7 @@ def get_retry_filename(commits_list):
     :param commits_list: []: List of all commits SHA1
     :return:
     """
-    last_commit_sha1 = commits_list[-1]
+    last_commit_sha1 = commits_list[0]
     return last_commit_sha1[0:7] + '.tmp'
 
 
@@ -190,24 +184,19 @@ def execute_test_playbook(conn, file_name):
     return exit_status
 
 
-# modified_servers = ['artemis', 'nova-nfe', 'other-server']
-# conn = create_connection()
-# commit_list = ['1ffaaf3187a85176e984025690e428ab2f5a2296', '536b9d6404b456cd5c9bba63cd2648d1d9053340']
-# file_name = get_retry_filename(commit_list)
-# write_retry_file(conn, modified_servers, file_name)
-# execute_test_playbook(conn)
-
-
 def main(args):
     # Setup variables
     ref, old, new = (args)
     commit_list = rev_list_sha1(new, old)
     modified_servers = get_all_modified_servers(commit_list)
-    file_name = get_retry_filename(commit_list)
-    conn = create_connection()
-    write_retry_file(conn, modified_servers, file_name)
-    exit_status = execute_test_playbook(conn, file_name)
-    exit(exit_status)
+    if modified_servers:
+        file_name = get_retry_filename(commit_list)
+        conn = create_connection()
+        write_retry_file(conn, modified_servers, file_name)
+        exit_status = execute_test_playbook(conn, file_name)
+        exit(exit_status)
+    else:
+        print "Nothing changed, move on!"
 
 
 if __name__ == '__main__':
