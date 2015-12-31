@@ -28,12 +28,6 @@ def run_paramiko_command(client, command, work_dir=None):
         command = "cd %s;%s" % (work_dir, command)
     stdin, stdout, stderr = client.exec_command(command)
     return stderr.read(), stdout.read()
-    # error_lines = stderr.read()
-    # if error_lines:
-    # print error_lines
-    #     return error_lines
-    # else:
-    #     return stdout.read()
 
 
 def run_command(work_dir, command):
@@ -66,7 +60,6 @@ def rev_list_sha1(new, old):
     command = "git rev-list %s..%s" % (old[0:7], new[0:7])
     output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
     # The run command method was fine!
-    print "rev_list: %s" % output
     if output:
         for commit in output.strip().split('\n'):
             # Each commit SHA1 has exacly 40 characters
@@ -129,9 +122,7 @@ def get_retry_filename(commits_list):
     :param commits_list: []: List of all commits SHA1
     :return:
     """
-    print "Commit list:%s" % commits_list
     last_commit_sha1 = commits_list[0]
-    print "Last_commit:%s" % last_commit_sha1
     return last_commit_sha1[0:7] + '.tmp'
 
 
@@ -191,14 +182,6 @@ def execute_test_playbook(conn, file_name):
         # I'll try to remove, but, if I couldn't there's no problem
         remove_retry_file(conn, file_name)
     return exit_status
-
-
-# modified_servers = ['artemis', 'nova-nfe', 'other-server']
-# conn = create_connection()
-# commit_list = ['1ffaaf3187a85176e984025690e428ab2f5a2296', '536b9d6404b456cd5c9bba63cd2648d1d9053340']
-# file_name = get_retry_filename(commit_list)
-# write_retry_file(conn, modified_servers, file_name)
-# execute_test_playbook(conn)
 
 
 def main(args):
