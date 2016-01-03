@@ -58,9 +58,11 @@ def get_last_commit():
     Return the last commit sha1 inside the repo.
     :return: str: Commit sha1
     """
+
     cmd = "git log --format=%H -n 1"
     path = "/var/opt/gitlab/git-data/repositories/infra/remote-configs.git"
     output = run_command(path, cmd)
+
     if output:
         return output.strip()
 
@@ -69,7 +71,9 @@ def get_file_name():
     Return the name of the retry file
     :return: str: retry file and directory
     """
+
     commit_sha1 = get_last_commit()
+
     if commit_sha1:
         return "/tmp/%s.tmp" % commit_sha1[0:7]
     else:
@@ -83,13 +87,17 @@ def run_playbook(conn, retry_file):
     :param retry_file: str: The retry file with only the modified hosts
     :return: None
     """
+
     cmd = "ansible-playbook /etc/ansible/roles/remote-config/remote-config.yml -l @%s" % retry_file
     stderr, stdout = run_remote_command(conn, cmd)
+
     if stderr:
         print "Aconteceu algum problema na execucao do playbook remote-config.yml\nVerifique o erro abaixo:"
         print stderr
         # I don't want a git reset if the playbook stop with errors
         exit(2)
+
+    # This is the output of the playbook
     print stdout
 
 def update_controller_repo(conn, path):
@@ -99,11 +107,14 @@ def update_controller_repo(conn, path):
     :param path: str: Work dir of the repo
     :return:
     """
+
     keep_trying = 0
     stderr = stdout = ""
+
     # Sometimes fetch fails, I don't it to give up without 3 shoots
     while keep_trying < 3:
         stderr, stdout = run_remote_command(conn, "git fetch --all", path)
+
         if stderr:
             keep_trying += 1
             # If this is a connection problem, let's try again
@@ -112,6 +123,7 @@ def update_controller_repo(conn, path):
             keep_trying = 0
             print stdout
             break
+
     # Failed miserable three times
     if keep_trying == 3:
         print "Nao foi possivel atualizar o repositorio %s\nVerifique o erro abaixo:" % path
@@ -128,8 +140,10 @@ def retry_file_exists(conn, retry_file):
     :param retry_file: str: retry file name and path
     :return: bool
     """
+
     cmd = "ls %s" % retry_file
     stderr, stdout = run_remote_command(conn, cmd)
+
     return True if stderr == "" else False
 
 def reset_controller_repo(conn, path):
@@ -139,17 +153,21 @@ def reset_controller_repo(conn, path):
     :param path: str: Work dir of the repo
     :return:
     """
+
     # Reset controller repo with the just pushed files
     stderr, stdout = run_remote_command(conn, "git reset --hard origin/master", path)
+
     if stderr:
         print "Nao foi possivel resetar o repositorio %s\nVerifique o erro abaixo:" % path
         print stderr
         exit(2)
+
     # Print for logging
     print stdout
 
 
 def main():
+
     path = "/remote-configs"
     conn = create_connection()
     # Failure it's handled on this command

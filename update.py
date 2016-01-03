@@ -10,11 +10,14 @@ def create_connection():
     Starts a connection to the controller host
     :return:
     """
+
     host = "10.200.0.127"
     user = "root"
     pwd = "oracle"
     client = SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    #Try to connect to the remote host
     try:
         client.connect(hostname=host, username=user, password=pwd, look_for_keys=False, allow_agent=False)
     except:
@@ -24,8 +27,19 @@ def create_connection():
 
 
 def run_paramiko_command(client, command, work_dir=None):
+    """
+    Executes a paramiko command
+    :param client: SSHClient connection
+    :param command: str: a bash command
+    :param work_dir: str:
+    :return:
+    """
+
+    # Enter in the directory if the work_dir is True
     if work_dir:
         command = "cd %s;%s" % (work_dir, command)
+
+    #Execute the command and get back then pipes
     stdin, stdout, stderr = client.exec_command(command)
     return stderr.read(), stdout.read()
 
@@ -37,9 +51,12 @@ def run_command(work_dir, command):
     :param command: command itself
     :return: str: output of the command
     """
+
+    #Run a command via subprocess (locally)
     session = subprocess.Popen(command.split(' '), stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=work_dir)
     stdout, stderr = session.communicate()
+
     if stderr != '':
         print 'Impossivel executar o comando %s\n Erro: %s' % (command, stderr)
         return None
@@ -55,19 +72,25 @@ def rev_list_sha1(new, old):
     :param
     :return: [] : List of SHA1
     """
+
     commit_list = []
     # Only the first 6 characters are needed
     command = "git rev-list %s..%s" % (old[0:7], new[0:7])
     output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
+
+
     # The run command method was fine!
     if output:
         for commit in output.strip().split('\n'):
-            # Each commit SHA1 has exacly 40 characters
+
+            # Each commit SHA1 has exactly 40 characters
             if len(commit.strip()) == 40:
                 commit_list.append(commit.strip())
+
     else:
         # There's no commit to be parsed
         return []
+
     return commit_list
 
 
@@ -77,11 +100,14 @@ def parse_modified_servers(diff_output):
     :param diff_output: str: output of git diff
     :return: []: List of servers
     """
+
     modfied_servers = []
     for line in diff_output.split('\n'):
         got_list = line.strip().split('/')
+
         if len(got_list) >= 3:
             modfied_servers.append(got_list[1])
+
     return modfied_servers
 
 
@@ -91,13 +117,15 @@ def get_modified_servers_from_commit(commit_sha1):
     :param commit_sha1: str
     :return: []: List of files modified from that commit
     """
+
     command = "git log -1 --name-only --pretty=format:'' %s" % commit_sha1
     output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
-    modified_files = []
+
     if output:
         modified_files = parse_modified_servers(output)
     else:
         return None
+
     return modified_files
 
 
@@ -108,6 +136,7 @@ def get_all_modified_servers(commit_sha1_list):
     :return: []: List of all modified servers
     """
     modified_servers = []
+
     for commit_sha1 in commit_sha1_list:
         commit_modified_servers = get_modified_servers_from_commit(commit_sha1)
         # This is used to remove duplicates
@@ -122,6 +151,7 @@ def get_retry_filename(commits_list):
     :param commits_list: []: List of all commits SHA1
     :return:
     """
+
     last_commit_sha1 = commits_list[0]
     return last_commit_sha1[0:7] + '.tmp'
 
@@ -133,12 +163,15 @@ def remove_retry_file(conn, file_name):
     :param file_name: str: File name of the retry file
     :return: None
     """
+
     command = "rm -rf /tmp/%s" % file_name
     print "Running %s" % command
     stderr, stdout = run_paramiko_command(conn, command)
+
     if stderr:
         print "Nao foi possivel remover o arquivo de retry: /tmp/%s" % file_name
         print stderr
+
 
 def write_retry_file(conn, modified_servers, file_name):
     """
@@ -148,9 +181,11 @@ def write_retry_file(conn, modified_servers, file_name):
     :param file_name: str: Name of the retry file
     :return: None
     """
+
     modified_into_string = "\n".join(modified_servers)
     command = "echo -e \"%s\" > /tmp/%s" % (modified_into_string, file_name)
     stderr, stdout = run_paramiko_command(conn, command)
+
     # Since am writing there'll be only output if paramiko receives some stderr
     if stderr:
         print "Nao foi possivel escrever o arquivo de retry no controller. Valide o caminho"
@@ -165,30 +200,37 @@ def execute_test_playbook(conn, file_name):
     :param file_name: str: File name of the retry file
     :return:
     """
+
     cmd = "ansible-playbook /etc/ansible/roles/remote-config/remote-config.yml --check -l @/tmp/%s" % file_name
     stderr, stdout = run_paramiko_command(conn, cmd)
     exit_status = 0
+
     if stderr:
         print "Ocorreu algum problema ao tentar executar o playbook de teste de conectividade, leia o output:\n"
         print stderr
         exit_status = 2
+
     if 'unreachable=1' in stdout:
         print "Alguns hosts falharam no teste.\nEste push sera negado. Verifique os erros no output. \nPode ser erro" \
               " de conectividade com o controller ou algo que esta errado nas configuracoes do remote-config.\n" \
               "Veja o output abaixo:"
         print stdout
         exit_status = 2
+
     if exit_status == 2:
         # I'll try to remove, but, if I couldn't there's no problem
         remove_retry_file(conn, file_name)
+
     return exit_status
 
 
 def main(args):
+
     # Setup variables
-    ref, old, new = (args)
+    ref, old, new = args
     commit_list = rev_list_sha1(new, old)
     modified_servers = get_all_modified_servers(commit_list)
+
     if modified_servers:
         file_name = get_retry_filename(commit_list)
         conn = create_connection()
