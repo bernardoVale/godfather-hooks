@@ -13,9 +13,13 @@ def run_command(work_dir, command):
     :param command: command itself
     :return: str: output of the command
     """
+
+
     session = subprocess.Popen(command.split(' '), stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=work_dir)
     stdout, stderr = session.communicate()
+
+
     if stderr != '':
         print 'Impossivel executar o comando %s\n Erro: %s' % (command, stderr)
         return None
@@ -30,8 +34,12 @@ def run_remote_command(client, command, work_dir=None):
     :param work_dir: str: A directory to start with
     :return: (str, str): Both stderr and stdout
     """
+
+
     if work_dir:
         command = "cd %s;%s" % (work_dir, command)
+
+
     stdin, stdout, stderr = client.exec_command(command)
     return stderr.read(), stdout.read()
 
