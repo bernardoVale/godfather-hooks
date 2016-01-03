@@ -3,8 +3,28 @@ import subprocess
 import sys
 from paramiko import SSHClient
 import paramiko
+import time
 
 
+def timeit(method):
+    """
+    A decorator to measure time
+    :param method: A python method
+    :return: Method with time measurement
+    """
+
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+
+        print '%r (%r, %r) %2.2f sec' % \
+              (method.__name__, args, kw, te - ts)
+        return result
+
+    return timed
+
+@timeit
 def create_connection():
     """
     Starts a connection to the controller host
@@ -26,6 +46,7 @@ def create_connection():
     return client
 
 
+@timeit
 def run_paramiko_command(client, command, work_dir=None):
     """
     Executes a paramiko command
@@ -44,6 +65,7 @@ def run_paramiko_command(client, command, work_dir=None):
     return stderr.read(), stdout.read()
 
 
+@timeit
 def run_command(work_dir, command):
     """
     Run a command on OS
@@ -64,6 +86,7 @@ def run_command(work_dir, command):
         return stdout
 
 
+@timeit
 def rev_list_sha1(new, old):
     """
     Return a list of sha1 commits from those two intervals of a revision_list
@@ -94,6 +117,7 @@ def rev_list_sha1(new, old):
     return commit_list
 
 
+@timeit
 def parse_modified_servers(diff_output):
     """
     Return a list of servers modified
@@ -111,6 +135,7 @@ def parse_modified_servers(diff_output):
     return modfied_servers
 
 
+@timeit
 def get_modified_servers_from_commit(commit_sha1):
     """
     Return all modified files on that commit
@@ -129,6 +154,7 @@ def get_modified_servers_from_commit(commit_sha1):
     return modified_files
 
 
+@timeit
 def get_all_modified_servers(commit_sha1_list):
     """
 
@@ -145,6 +171,7 @@ def get_all_modified_servers(commit_sha1_list):
     return modified_servers
 
 
+@timeit
 def get_retry_filename(commits_list):
     """
     Return the name of the retry file name
@@ -156,6 +183,7 @@ def get_retry_filename(commits_list):
     return last_commit_sha1[0:7] + '.tmp'
 
 
+@timeit
 def remove_retry_file(conn, file_name):
     """
     Remove the retry file
@@ -173,6 +201,7 @@ def remove_retry_file(conn, file_name):
         print stderr
 
 
+@timeit
 def write_retry_file(conn, modified_servers, file_name):
     """
     Write a retry file inside the controller host
@@ -193,6 +222,8 @@ def write_retry_file(conn, modified_servers, file_name):
         exit(2)
 
 
+
+@timeit
 def execute_test_playbook(conn, file_name):
     """
     Executes a simple playbook to test conectivity with the modified servers
@@ -224,6 +255,7 @@ def execute_test_playbook(conn, file_name):
     return exit_status
 
 
+@timeit
 def main(args):
 
     # Setup variables

@@ -123,7 +123,7 @@ class TestUpdate(unittest.TestCase):
 
     def test_get_retry_filename(self):
         commits_list = ['1ffaaf3187a85176e984025690e428ab2f5a2296', '536b9d6404b456cd5c9bba63cd2648d1d9053340']
-        expect = '536b9d6.tmp'
+        expect = '1ffaaf3.tmp'
         got = get_retry_filename(commits_list)
         self.assertEqual(expect, got)
 

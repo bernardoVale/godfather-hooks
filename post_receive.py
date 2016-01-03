@@ -6,6 +6,27 @@ from paramiko import SSHClient
 import paramiko
 import time
 
+
+def timeit(method):
+    """
+    A decorator to measure time
+    :param method: A python method
+    :return: Method with time measurement
+    """
+
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+
+        print '%r (%r, %r) %2.2f sec' % \
+              (method.__name__, args, kw, te - ts)
+        return result
+
+    return timed
+
+
+@timeit
 def run_command(work_dir, command):
     """
     Run a command on OS
@@ -26,6 +47,8 @@ def run_command(work_dir, command):
     else:
         return stdout
 
+
+@timeit
 def run_remote_command(client, command, work_dir=None):
     """
     Executes a command and return stdout and stderr
@@ -43,6 +66,8 @@ def run_remote_command(client, command, work_dir=None):
     stdin, stdout, stderr = client.exec_command(command)
     return stderr.read(), stdout.read()
 
+
+@timeit
 def create_connection():
     """
     Starts a connection to the controller host
@@ -61,6 +86,7 @@ def create_connection():
     return client
 
 
+@timeit
 def get_last_commit():
     """
     Return the last commit sha1 inside the repo.
@@ -74,6 +100,8 @@ def get_last_commit():
     if output:
         return output.strip()
 
+
+@timeit
 def get_file_name():
     """
     Return the name of the retry file
@@ -88,6 +116,8 @@ def get_file_name():
         print "Nao foi possivel coletar o SHA1 do ultimo commit, verifique os erros acima"
         exit(2)
 
+
+@timeit
 def run_playbook(conn, retry_file):
     """
     Ran the playbook remote-config with the retry_file especified
@@ -108,6 +138,8 @@ def run_playbook(conn, retry_file):
     # This is the output of the playbook
     print stdout
 
+
+@timeit
 def update_controller_repo(conn, path):
     """
     Try to fetch git updates on the local repository (controller repo)
@@ -139,6 +171,7 @@ def update_controller_repo(conn, path):
         exit(2)
 
 
+@timeit
 def retry_file_exists(conn, retry_file):
     """
     Make sure this file exists inside the controller host.
@@ -154,6 +187,8 @@ def retry_file_exists(conn, retry_file):
 
     return True if stderr == "" else False
 
+
+@timeit
 def reset_controller_repo(conn, path):
     """
     Run a git reset to get all updates from the last push
@@ -174,6 +209,7 @@ def reset_controller_repo(conn, path):
     print stdout
 
 
+@timeit
 def main():
 
     path = "/remote-configs"
