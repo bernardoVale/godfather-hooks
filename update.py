@@ -31,7 +31,7 @@ def create_connection():
     :return:
     """
 
-    host = "10.200.0.127"
+    host = "10.200.0.129"
     user = "root"
     pwd = "oracle"
     client = SSHClient()
@@ -200,6 +200,22 @@ def remove_retry_file(conn, file_name):
         print "Nao foi possivel remover o arquivo de retry: /tmp/%s" % file_name
         print stderr
 
+@timeit
+def write_retry_file_local(modified_servers, file_name):
+    """
+    Write a retry file on gitlabs host
+    :param modified_servers: []: List of all modified servers
+    :param file_name: str: Name of the retry file
+    :return: None
+    """
+
+    modified_into_string = "\n".join(modified_servers)
+    command = "echo -e \"%s\" > /tmp/%s" % (modified_into_string, file_name)
+    output = run_command('/tmp', command)
+
+    # Die silently
+    if not output:
+        exit(2)
 
 @timeit
 def write_retry_file(conn, modified_servers, file_name):
@@ -213,6 +229,7 @@ def write_retry_file(conn, modified_servers, file_name):
 
     modified_into_string = "\n".join(modified_servers)
     command = "echo -e \"%s\" > /tmp/%s" % (modified_into_string, file_name)
+    run_command('/tmp', command)
     stderr, stdout = run_paramiko_command(conn, command)
 
     # Since am writing there'll be only output if paramiko receives some stderr
@@ -254,6 +271,8 @@ def execute_test_playbook(conn, file_name):
 
     return exit_status
 
+modified_hosts = ['host1', 'host2']
+print write_retry_file_local(modified_hosts,'test.tmp')
 
 @timeit
 def main(args):
@@ -266,6 +285,7 @@ def main(args):
     if modified_servers:
         file_name = get_retry_filename(commit_list)
         conn = create_connection()
+        write_retry_file_local(modified_servers, file_name)
         write_retry_file(conn, modified_servers, file_name)
         exit_status = execute_test_playbook(conn, file_name)
         exit(exit_status)
