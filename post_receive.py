@@ -7,6 +7,16 @@ import paramiko
 import time
 
 
+class Config:
+
+    def __init__(self, controller_hostname, controller_user, controller_password, git_repository_path):
+        self.controller_hostname = controller_hostname
+        self.controller_user = controller_user
+        self.controller_password = controller_password
+        self.git_repository_path = git_repository_path
+
+
+
 def timeit(method):
     """
     A decorator to measure time
@@ -67,48 +77,45 @@ def run_remote_command(client, command, work_dir=None):
     return stderr.read(), stdout.read()
 
 
+
 @timeit
-def create_connection():
+def create_connection_password(host, username, password):
     """
     Starts a connection to the controller host
     :return:
     """
-    host = "10.200.0.129"
-    user = "root"
-    pwd = "oracle"
-    client = SSHClient()
+    client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        client.connect(hostname=host, username=user, password=pwd, look_for_keys=False, allow_agent=False)
+        client.connect(hostname=host, username=username, password=password, look_for_keys=False, allow_agent=False)
     except:
-        print "Impossivel conectar com o controller"
+        print "Cannot communicate with controller over ssh"
         exit(3)
     return client
 
 
 @timeit
-def get_last_commit():
+def get_last_commit(git_path):
     """
     Return the last commit sha1 inside the repo.
     :return: str: Commit sha1
     """
 
     cmd = "git log --format=%H -n 1"
-    path = "/var/opt/gitlab/git-data/repositories/infra/remote-configs.git"
-    output = run_command(path, cmd)
+    output = run_command(git_path, cmd)
 
     if output:
         return output.strip()
 
 
 @timeit
-def get_file_name():
+def get_file_name(git_path):
     """
     Return the name of the retry file
     :return: str: retry file and directory
     """
 
-    commit_sha1 = get_last_commit()
+    commit_sha1 = get_last_commit(git_path)
 
     if commit_sha1:
         return "/tmp/%s.tmp" % commit_sha1[0:7]
@@ -212,14 +219,17 @@ def reset_controller_repo(conn, path):
 @timeit
 def main():
 
+    c = Config('godfather', 'root', 'alsk1029QWE#', '/opt/bitnami/apps/gitlab/repositories/infra/remote-configs.git')
+
+
     path = "/remote-configs"
-    conn = create_connection()
+    conn = create_connection_password(c.controller_hostname, c.controller_user, c.controller_password)
     # Failure it's handled on this command
     update_controller_repo(conn, path)
     # Reset to the latest update
     reset_controller_repo(conn, path)
     # Make sure there's a retry file. If it doesn't the update does not contain modified servers
-    retry_file = get_file_name()
+    retry_file = get_file_name(c.git_repository_path)
     # Last test. If the file exists run the playbook
     if retry_file_exists(conn, retry_file):
         # If we got here, everything it's ok, just run the playbook

@@ -6,6 +6,15 @@ import paramiko
 import time
 
 
+class Config:
+
+    def __init__(self, controller_hostname, controller_user, controller_password, git_repository_path):
+        self.controller_hostname = controller_hostname
+        self.controller_user = controller_user
+        self.controller_password = controller_password
+        self.git_repository_path = git_repository_path
+
+
 def timeit(method):
     """
     A decorator to measure time
@@ -25,26 +34,19 @@ def timeit(method):
     return timed
 
 @timeit
-def create_connection():
+def create_connection_password(host, username, password):
     """
     Starts a connection to the controller host
     :return:
     """
-
-    host = "10.200.0.129"
-    user = "root"
-    pwd = "oracle"
-    client = SSHClient()
+    client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    #Try to connect to the remote host
     try:
-        client.connect(hostname=host, username=user, password=pwd, look_for_keys=False, allow_agent=False)
+        client.connect(hostname=host, username=username, password=password, look_for_keys=False, allow_agent=False)
     except:
-        print "Impossivel conectar com o controller"
+        print "Cannot communicate with controller over ssh"
         exit(3)
     return client
-
 
 @timeit
 def run_paramiko_command(client, command, work_dir=None):
@@ -87,11 +89,12 @@ def run_command(work_dir, command):
 
 
 @timeit
-def rev_list_sha1(new, old):
+def rev_list_sha1(new, old, git_folder):
     """
     Return a list of sha1 commits from those two intervals of a revision_list
     :param new: sha1 of the new commit
     :param old: sha1 of the newest commit pushed
+    :param git_folder: The folder of your project. Git bare repository
     :param
     :return: [] : List of SHA1
     """
@@ -99,7 +102,7 @@ def rev_list_sha1(new, old):
     commit_list = []
     # Only the first 6 characters are needed
     command = "git rev-list %s..%s" % (old[0:7], new[0:7])
-    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
+    output = run_command(git_folder, command)
 
 
     # The run command method was fine!
@@ -136,7 +139,7 @@ def parse_modified_servers(diff_output):
 
 
 @timeit
-def get_modified_servers_from_commit(commit_sha1):
+def get_modified_servers_from_commit(commit_sha1, git_folder):
     """
     Return all modified files on that commit
     :param commit_sha1: str
@@ -144,7 +147,7 @@ def get_modified_servers_from_commit(commit_sha1):
     """
 
     command = "git log -1 --name-only --pretty=format:'' %s" % commit_sha1
-    output = run_command('/var/opt/gitlab/git-data/repositories/infra/remote-configs.git', command)
+    output = run_command(git_folder, command)
 
     if output:
         modified_files = parse_modified_servers(output)
@@ -155,7 +158,7 @@ def get_modified_servers_from_commit(commit_sha1):
 
 
 @timeit
-def get_all_modified_servers(commit_sha1_list):
+def get_all_modified_servers(commit_sha1_list, git_folder):
     """
 
     :param commit_sha1_list: List of SHA1 commits
@@ -164,7 +167,7 @@ def get_all_modified_servers(commit_sha1_list):
     modified_servers = []
 
     for commit_sha1 in commit_sha1_list:
-        commit_modified_servers = get_modified_servers_from_commit(commit_sha1)
+        commit_modified_servers = get_modified_servers_from_commit(commit_sha1, git_folder)
         # This is used to remove duplicates
         modified_servers = list(set(modified_servers) | set(commit_modified_servers))
 
@@ -271,20 +274,21 @@ def execute_test_playbook(conn, file_name):
 
     return exit_status
 
-modified_hosts = ['host1', 'host2']
-print write_retry_file_local(modified_hosts,'test.tmp')
 
 @timeit
 def main(args):
 
+    c = Config('godfather', 'root', 'alsk1029QWE#', '/opt/bitnami/apps/gitlab/repositories/infra/remote-configs.git')
+
+
     # Setup variables
     ref, old, new = args
-    commit_list = rev_list_sha1(new, old)
-    modified_servers = get_all_modified_servers(commit_list)
+    commit_list = rev_list_sha1(new, old, c.git_repository_path)
+    modified_servers = get_all_modified_servers(commit_list, c.git_repository_path)
 
     if modified_servers:
         file_name = get_retry_filename(commit_list)
-        conn = create_connection()
+        conn = create_connection_password('godfather', 'root', 'alsk1029QWE#')
         write_retry_file_local(modified_servers, file_name)
         write_retry_file(conn, modified_servers, file_name)
         exit_status = execute_test_playbook(conn, file_name)
